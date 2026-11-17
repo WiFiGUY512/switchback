@@ -1,0 +1,84 @@
+#==============================================================================
+# SwitchBot Plug Mini (W1901400 / W1901401), ESP32-C3: the hardware
+#==============================================================================
+# Shared by every Switchback payload. It has no api, ota or wifi section, so
+# you can also pull it into your own config as a remote package:
+#
+#   packages:
+#     switchback: github://WiFiGUY512/switchback/firmware/esphome/sbplug-common.yaml@v0.3.0
+#
+# then add your own api, ota and wifi. Pin a release tag, not main.
+#
+# SIZE LIMIT (for payloads the flasher writes):
+#   The flasher writes from 0x0 and can only write 0x171000 (1,511,424) bytes,
+#   so firmware.factory.bin has to stay under that. That is why there are no
+#   BLE components here. Add those later in your own config over OTA.
+#
+# PARTITIONS:
+#   A converted plug keeps the partition table from the image the flasher
+#   wrote (ESPHome default for 4MB: two app slots). OTA never changes it.
+#
+# BUTTON: short press toggles the relay. Hold 10 s to factory reset, which
+#   wipes Wi-Fi saved through the hotspot, so a portal plug offers it again.
+# BLUE LED: blinks while the plug is not on Wi-Fi.
+#==============================================================================
+
+substitutions:
+  name: sbplug
+
+esphome:
+  name: ${name}
+  name_add_mac_suffix: true
+  platformio_options:
+    board_build.flash_mode: dio
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: ESP32C3
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+# UART0 is what the serial pads expose, so boot logs show up on the recovery path.
+logger:
+  hardware_uart: UART0
+
+captive_portal:
+
+status_led:
+  pin:
+    number: GPIO8
+    inverted: true
+
+switch:
+  - platform: gpio
+    id: relay
+    name: "Relay"
+    pin: GPIO6
+    restore_mode: RESTORE_DEFAULT_OFF
+
+button:
+  - platform: factory_reset
+    id: factory_reset_button
+    internal: true
+
+binary_sensor:
+  - platform: gpio
+    id: plug_button
+    internal: true
+    pin:
+      number: GPIO2
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 10ms
+    on_multi_click:
+      - timing:
+          - ON for at most 1s
+          - OFF for at least 0.3s
+        then:
+          - switch.toggle: relay
+      - timing:
+          - ON for at least 10s
+        then:
+          - button.press: factory_reset_button

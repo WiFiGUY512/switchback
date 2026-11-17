@@ -1,0 +1,157 @@
+name: Release
+
+# Push a tag like v0.3.0 (it must match the version in pyproject.toml) and GitHub builds
+# every release file from that commit: the flasher (app.bin), both ESPHome payloads, the
+# Python package, SHA256SUMS, and a build provenance attestation for each file. It opens a
+# DRAFT release. Review it, then publish it by hand.
+#
+# Check any download:  gh attestation verify <file> -R <owner>/<repo>
+#
+# Run it by hand (Actions, Release, Run workflow) for a dry run: everything is built and
+# kept as a workflow artifact. Nothing is attested or published.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ESPHOME_VERSION: '2026.5.1'
+
+jobs:
+  version:
+    name: Tag matches the package version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match pyproject.toml version $version"
+            exit 1
+          fi
+
+  flasher:
+    name: Flasher (app.bin)
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: espressif/esp-idf-ci-action@e6f5c74232b1ccd4c97ed641f1e48553853f1fd5 # v1.2.0
+        with:
+          esp_idf_version: v4.4
+          target: esp32c3
+          path: firmware/flasher
+      - run: |
+          mkdir -p out
+          cp firmware/flasher/build/switchbota.bin out/app.bin
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: flasher
+          path: out/app.bin
+          if-no-files-found: error
+
+  payloads:
+    name: ESPHome payloads
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.platformio
+          key: platformio-esphome-${{ env.ESPHOME_VERSION }}
+      - run: pip install "esphome==${ESPHOME_VERSION}"
+      - run: |
+          python scripts/build_payload.py portal -o out/sbplug-portal.bin
+          python scripts/build_payload.py direct -o out/sbplug-direct.bin
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: payloads
+          path: out/*.bin
+          if-no-files-found: error
+
+  package:
+    name: Python package
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Check, checksum, attest, draft release
+    needs: [flasher, payloads, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: collected
+      - name: Gather the files and write SHA256SUMS
+        run: |
+          mkdir release
+          cp collected/flasher/app.bin collected/payloads/*.bin collected/package/* release/
+          (cd release && sha256sum -- * > SHA256SUMS)
+          cat release/SHA256SUMS
+      - name: Check the images with Switchback's own checks
+        run: uv run switchback firmware --firmware-dir release
+      - name: Dry run, keep the files as an artifact
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dry-run
+          path: release/*
+      - name: Attest build provenance
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/*
+      - name: Create the draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat > notes.md <<EOF
+          Built by GitHub Actions from ${GITHUB_SHA::7}. Nothing in this release was built on a personal computer.
+
+          Install: \`uv tool install git+https://github.com/${GITHUB_REPOSITORY}@${TAG}\`
+
+          Switchback downloads and checks these firmware files itself. To check one by hand:
+          \`gh attestation verify <file> -R ${GITHUB_REPOSITORY}\`, or compare it with SHA256SUMS.
+          EOF
+          gh release create "$TAG" release/* -R "$GITHUB_REPOSITORY" \
+            --draft --prerelease --verify-tag --title "$TAG" --notes-file notes.md --generate-notes

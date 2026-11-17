@@ -1,0 +1,30 @@
+#==============================================================================
+# Switchback payload: portal (published in every release as sbplug-portal.bin)
+#==============================================================================
+# The bootstrap that `switchback convert --mode portal` writes. It holds no
+# secrets, so one build can be published for everyone:
+#
+#   - No Wi-Fi is built in. The plug opens an open hotspot named sbplug-xxxxxx.
+#     Join it and the captive portal (http://192.168.4.1) asks for your Wi-Fi.
+#   - API encryption is OFF until you flash your own config over OTA.
+#   - The OTA password is the published default "switchbota". Change it when
+#     you flash your own config. To build with another one:
+#       esphome -s ota_password <yours> compile sbplug-portal.yaml
+#
+# BUILD:  python scripts/build_payload.py portal
+#==============================================================================
+
+substitutions:
+  ota_password: switchbota
+
+packages:
+  common: !include sbplug-common.yaml
+
+api:
+
+ota:
+  platform: esphome
+  password: ${ota_password}
+
+wifi:
+  ap:

@@ -1,0 +1,37 @@
+#==============================================================================
+# Switchback payload: direct, EXPERIMENTAL (published as sbplug-direct.bin)
+#==============================================================================
+# Same as the portal build, with fixed-size placeholder Wi-Fi. At run time
+# `switchback convert --mode direct` overwrites the placeholders with the Wi-Fi
+# you type, then fixes the image checksum and SHA-256, so the plug joins your
+# network with no rebuild.
+#
+# The placeholder SSID does not exist, so an image served unpatched just falls
+# back to the sbplug-xxxxxx hotspot, the same as the portal build.
+#
+# Exact lengths matter: 32 byte SSID slot, 63 byte password slot.
+#   SSID:     SB_SSID_ + 24 'A'
+#   password: SB_PASS_ + 55 'B'
+#
+# Status: the patch verifies itself, but this mode has not yet converted a
+# real plug. The portal build is the proven path.
+#
+# BUILD:  python scripts/build_payload.py direct
+#==============================================================================
+
+substitutions:
+  ota_password: switchbota
+
+packages:
+  common: !include sbplug-common.yaml
+
+api:
+
+ota:
+  platform: esphome
+  password: ${ota_password}
+
+wifi:
+  ssid: "SB_SSID_AAAAAAAAAAAAAAAAAAAAAAAA"
+  password: "SB_PASS_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+  ap:

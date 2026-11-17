@@ -1,0 +1,29 @@
+#==============================================================================
+# Switchback payload: implant (build it yourself, never published)
+#==============================================================================
+# Your Wi-Fi, API key and OTA password from secrets.yaml are built in, so the
+# plug joins your network by itself and shows up as sbplug-xxxxxx. If it
+# cannot reach that network it falls back to the sbplug-xxxxxx hotspot.
+#
+# REQUIRED SECRETS: api_encryption_key, ota_password, wifi_ssid, wifi_password
+# BUILD:  python scripts/build_payload.py implant -o sbplug-implant.bin
+# USE:    switchback convert --mode portal --payload sbplug-implant.bin
+#         (portal mode here only means "do not wait on mDNS for a patched
+#         Wi-Fi"; the plug still joins your network by itself)
+#==============================================================================
+
+packages:
+  common: !include sbplug-common.yaml
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  platform: esphome
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:

@@ -1,0 +1,24 @@
+# Build output and environments
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Firmware never goes in git; releases carry it
+*.bin
+out/
+firmware/flasher/build/
+firmware/flasher/sdkconfig.old
+firmware/esphome/.esphome/
+firmware/esphome/secrets.yaml
+
+# Local conversion records
+*.csv
+!firmware/flasher/part.csv
+sbplug_flashed.txt
+
+.DS_Store
