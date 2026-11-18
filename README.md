@@ -4,6 +4,10 @@
 
 Switchback replaces the stock firmware on a SwitchBot Plug Mini (W1901400 and the HomeKit W1901401, both ESP32-C3) with [ESPHome](https://esphome.io), so the plug works locally with Home Assistant.
 
+![A SwitchBot Plug Mini converted by Switchback, with its printed label: date, BLE and Wi-Fi MACs, and a QR code](images/plug-label.jpg)
+
+A converted plug with its label. `switchback label` prints one (ZPL, optional).
+
 ## What Switchback does to your network. Read this first.
 
 The plug downloads its firmware updates over plain HTTP from `wohand.com`, SwitchBot's update host. Switchback works by **pointing that one name at your own computer** for a short time, so a plug you own downloads ESPHome instead.
