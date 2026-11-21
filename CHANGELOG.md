@@ -2,6 +2,23 @@
 
 All notable changes are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - unreleased
+
+A converted plug now boots the full hardware profile, so it reports power and energy right away. No second flash is needed before it is useful.
+
+### Added
+
+- `firmware/esphome/plug-mini.yaml`: the plug's hardware as one public package. Relay output, button, both LEDs, BL0937 power monitoring with calibration and range checks, lifetime and daily energy, chip temperature. No Wi-Fi, API, OTA, names or secrets. Use it as a remote package to build your own config.
+- Power, current and voltage are measured every 2 seconds but sent to Home Assistant only on a real change (1 W, 0.05 A, 1 V) plus a heartbeat. Below 1.5 W the plug reads 0. The raw 2 second values stay available on the plug (`id(power)` and so on) for lambdas.
+- Device Builder and Home Assistant offer **Adopt** for a converted plug (ESPHome project `wifiguy512.switchback-plug-mini`).
+- `firmware/esphome/addon-ble-proxy.yaml`: an optional Bluetooth proxy with passive scanning, to add over OTA. It is not in any payload.
+- The relay is latched through clean restarts, so an OTA update does not blip the load.
+
+### Changed
+
+- `sbplug-common.yaml` now includes `plug-mini.yaml` and adds the bootstrap defaults: the "Relay" switch, the button scripts (short press toggles, hold 10 seconds to factory reset), an sntp time source and the captive portal. The relay switch keeps its name and id. The blue LED shows Wi-Fi and Home Assistant state instead of ESPHome's status pattern.
+- The button's short press now accepts presses up to 2.9 seconds (was 1 second).
+
 ## [0.3.0] - 2026-11-18
 
 First release from this repository, with fresh history.

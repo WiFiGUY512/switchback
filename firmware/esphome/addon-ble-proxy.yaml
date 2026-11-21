@@ -1,0 +1,30 @@
+#==============================================================================
+# Optional: Bluetooth proxy for Home Assistant (add over OTA, after converting)
+#==============================================================================
+# Not part of any Switchback payload. The Bluetooth stack makes the image too
+# large for the flasher's first write, so add it in your own config once the
+# plug runs ESPHome:
+#
+#   packages:
+#     plug: github://WiFiGUY512/switchback/firmware/esphome/plug-mini.yaml@v0.4.0
+#     ble:  github://WiFiGUY512/switchback/firmware/esphome/addon-ble-proxy.yaml@v0.4.0
+#
+# Wi-Fi and Bluetooth share the ESP32-C3's one radio. Scanning is passive,
+# and interval and window are left to ESPHome, which keeps the window at or
+# under 320 ms while Wi-Fi is up. Long windows (the old 1100 ms setting)
+# starve Wi-Fi. Only add this to plugs that are near Bluetooth devices you
+# use; a few well placed proxies beat one on every plug.
+#==============================================================================
+
+esp32:
+  framework:
+    sdkconfig_options:
+      CONFIG_BT_BLE_42_FEATURES_SUPPORTED: y
+      CONFIG_BT_BLE_50_FEATURES_SUPPORTED: y
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+bluetooth_proxy:
+  active: true
