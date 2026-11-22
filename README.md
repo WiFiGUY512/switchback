@@ -23,23 +23,32 @@ It does not touch any other device, does not intercept any other name, and does 
 > [!WARNING]
 > This rewrites the plug's bootloader over Wi-Fi. If the plug loses power at the wrong moment, it is bricked. The case is welded shut, so recovery means cutting it open and flashing over the serial pads. **Do not unplug a plug while it converts, and leave it powered for at least a minute after it finishes.** Try one plug before you do a box of them. There is no warranty.
 
-## Install
+## Run it
 
-You need Python 3.10 or newer and a computer with Bluetooth that [bleak](https://github.com/hbldh/bleak) supports: Windows 10 or 11, macOS, or Linux with BlueZ.
+You need a computer with Bluetooth that [bleak](https://github.com/hbldh/bleak) supports: Windows 10 or 11, macOS, or Linux with BlueZ.
 
-With [uv](https://docs.astral.sh/uv/):
+The simplest way needs no install. Get [uv](https://docs.astral.sh/uv/getting-started/installation/), then run Switchback straight from this repository:
+
+```bash
+uvx --from git+https://github.com/WiFiGUY512/switchback switchback convert
+```
+
+`uvx` fetches Switchback (and Python, if you have none) into a cache and runs it. Nothing is added to your PATH. Run the same line again for the next plug.
+
+The rest of this page writes commands as `switchback ...`. If you did not install it, put `uvx --from git+https://github.com/WiFiGUY512/switchback` in front.
+
+### Or install it
+
+If you will use it often, install it once (Python 3.10 or newer):
 
 ```bash
 uv tool install git+https://github.com/WiFiGUY512/switchback
+uv tool update-shell
 ```
 
-Or with [pipx](https://pipx.pypa.io/):
+The second line puts uv's tool folder on your PATH. Open a new terminal afterwards. With [pipx](https://pipx.pypa.io/) it is `pipx install git+https://github.com/WiFiGUY512/switchback`, then `pipx ensurepath`.
 
-```bash
-pipx install git+https://github.com/WiFiGUY512/switchback
-```
-
-To pin a release, add `@v0.3.0` to the URL. There is no exe. The firmware files are not in the package: Switchback downloads them from this repository's [Releases](https://github.com/WiFiGUY512/switchback/releases) and checks each against the release's `SHA256SUMS` before it serves anything.
+To pin a release, add `@v0.4.0` to the URL. There is no exe. The firmware files are not in the package: Switchback downloads them from this repository's [Releases](https://github.com/WiFiGUY512/switchback/releases) and checks each against the release's `SHA256SUMS` before it serves anything.
 
 ## Quick start
 
@@ -59,7 +68,13 @@ To pin a release, add `@v0.3.0` to the URL. There is no exe. The firmware files 
    switchback convert
    ```
 
-   It asks how the plug should get on Wi-Fi afterwards, and which Wi-Fi to use for the download. Then it finds the plug over Bluetooth, gives it the Wi-Fi, triggers the update and follows it to the end.
+   It asks a few questions and does the rest:
+
+   - how the plug should get on Wi-Fi afterwards,
+   - which Wi-Fi to use for the download. It lists the networks your computer can see, so you pick a number and type the password. 5 GHz-only networks are left out, because the plug cannot join them.
+   - It then looks for the plug over Bluetooth and asks `Found 1 plug. It will become sbplug-xxxxxx. Convert it?`
+
+   After you answer `y` it gives the plug the Wi-Fi, triggers the update and follows it to the end.
 
 On Linux, ports 80 and 53 need root: `sudo "$(command -v switchback)" convert`. On Windows, allow the one-time firewall prompt.
 
@@ -260,6 +275,8 @@ To build your own payload, see [CONTRIBUTING.md](CONTRIBUTING.md). The `sbplug-i
 - **Status 30 or 40 that loops.** The plug cannot find the network. It sees 2.4 GHz only, and the name is case sensitive. Switchback stops after about 45 seconds of this.
 - **Status 50 that never turns into "connected".** The plug joined but got no IP address. Use a flat network without VLAN tagging for the download.
 - **"refused the Bluetooth update trigger".** Newer stock firmware. Use Path B.
+- **"switchback is not recognized" (or "command not found") after installing.** The tool folder is not on your PATH. Run `uv tool update-shell` (or `pipx ensurepath`) and open a new terminal, or use the `uvx` line from [Run it](#run-it), which needs no PATH.
+- **"wohand.com resolves to another machine on your network".** A redirect is already in place and points at a different computer. If a Switchback server runs there, `convert` offers to follow it. Otherwise fix the redirect so it points at the computer you are running on.
 - **The plug never fetches anything.** Its DNS is not reaching your redirect, or something blocks port 80 to your computer. Run `nslookup www.wohand.com` from a device on the plug's network.
 - **A port is busy.** Something else uses port 80 or 53. Stop it, or use `--no-dns` with your own DNS records, or run the server on another box.
 - **Bluetooth drops on Windows.** Switchback retries the Wi-Fi step three times. Nothing has been sent to the plug when a connection fails.

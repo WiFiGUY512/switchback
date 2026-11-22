@@ -5,15 +5,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import getpass
+import ipaddress
 import os
 import platform
 import socket
 import sys
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
-from switchback import __version__, dns, firmware, image, label
+from switchback import __version__, dns, firmware, image, label, wifiscan
 from switchback import protocol as p
 from switchback.server import FirmwareServer, Payloads
 
@@ -112,6 +114,28 @@ def choose_mode(args: argparse.Namespace) -> str:
     return "direct" if ask("Choose 1 or 2 [1]: ").startswith("2") else "portal"
 
 
+def pick_wifi() -> str:
+    """Offer the Wi-Fi networks in range. Returns "" when the user should type a name instead."""
+    networks, hidden = wifiscan.usable(wifiscan.scan())
+    if not networks:
+        return ""
+    networks = networks[:15]
+    say("Wi-Fi networks this computer can see:")
+    for number, net in enumerate(networks, 1):
+        note = "  (this computer is on it)" if net.current else ""
+        say(f"  [{number}] {net.ssid}{note}")
+    say("  [0] another one (type its name)")
+    if hidden:
+        say(f"  Left out: {hidden} network(s) that are 5 GHz only. The plug cannot join those.")
+    while True:
+        answer = ask("Choose a number [1]: ") or "1"
+        if answer == "0":
+            return ""
+        if answer.isdigit() and 1 <= int(answer) <= len(networks):
+            return networks[int(answer) - 1].ssid
+        say(f"Type a number from 0 to {len(networks)}.")
+
+
 def wifi_details(args: argparse.Namespace, mode: str) -> tuple[str, str]:
     ssid = args.wifi_ssid
     if not ssid:
@@ -120,8 +144,10 @@ def wifi_details(args: argparse.Namespace, mode: str) -> tuple[str, str]:
         else:
             say("The plug needs a Wi-Fi just to download the firmware. It does not keep it.")
             say("Use a plain 2.4 GHz network whose DNS sends wohand.com to the server.")
-        ssid = ask("Wi-Fi name (SSID): ")
-    password = args.wifi_pass if args.wifi_pass is not None else ask_password()
+        ssid = pick_wifi() or ask("Wi-Fi name (SSID): ")
+    if not ssid:
+        return "", ""
+    password = args.wifi_pass if args.wifi_pass is not None else ask_password(f"Password for {ssid}: ")
     return ssid, password
 
 
@@ -147,20 +173,44 @@ def start_servers(args: argparse.Namespace, payloads: Payloads, ip: str, on_even
     return server
 
 
-def report_dns(ip: str, args: argparse.Namespace) -> bool:
-    """Say whether wohand.com points here, and how to fix it if not."""
+def report_dns(ip: str, args: argparse.Namespace) -> str | None:
+    """Say whether wohand.com points here, and how to fix it if not. Returns what it resolves to."""
     dns.flush_cache()
     seen = dns.system_lookup("www.wohand.com")
     if seen == ip:
         say(f"DNS: www.wohand.com resolves to this computer ({ip}). Good.")
-        return True
+        return seen
     say(f"DNS: on this computer, www.wohand.com resolves to {seen or 'nothing'}, not {ip}.")
+    if is_private(seen):
+        say(f"  {seen} is another machine on your network, so a redirect is already in place and points THERE.")
+        say("  A plug on a network with that redirect downloads from that machine, not from this computer.")
+        return seen
     say("  That is fine if only the plugs' network uses the redirect. The plug must get this answer:")
     say(f"    wohand.com and www.wohand.com -> {ip}")
     say("  Ways to do it (the README has steps for common routers and DNS servers):")
     say(f"    1. Point the DHCP DNS server of the plugs' network at {ip} (the built-in DNS answers).")
     say(f"    2. Or add those two names as local records to {ip} in your own DNS server.")
-    return False
+    return seen
+
+
+def is_private(address: str | None) -> bool:
+    try:
+        if address is None:
+            return False
+        parsed = ipaddress.ip_address(address)
+        return parsed.is_private and not parsed.is_loopback
+    except ValueError:
+        return False
+
+
+def switchback_server_at(address: str) -> bool:
+    """True if a Switchback firmware server answers at this address ("<md5> <size>" on /payload.md5)."""
+    try:
+        with urllib.request.urlopen(f"http://{address}/payload.md5", timeout=3) as response:
+            fields = response.read(100).decode("ascii", errors="replace").split()
+    except (OSError, ValueError):
+        return False
+    return len(fields) == 2 and len(fields[0]) == 32 and fields[1].isdigit()
 
 
 # ---------------------------------------------------------------- commands
@@ -279,10 +329,22 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
 
 async def _pick_plug(args: argparse.Namespace, handled: set[str]) -> Any:
+    plug, _ = await _find_plugs(args, handled)
+    return plug
+
+
+async def _find_plugs(args: argparse.Namespace, handled: set[str]) -> tuple[Any, int]:
+    """The nearest stock plug not handled yet, and how many are in range."""
     from switchback import ble
 
     plugs = [plug for plug in await ble.scan(args.scan_time, args.only) if plug.ble_mac not in handled]
-    return plugs[0] if plugs else None
+    return (plugs[0] if plugs else None), len(plugs)
+
+
+def convert_question(plug: Any, count: int) -> str:
+    if count == 1:
+        return f"Found 1 plug. It will become {plug.name}. Convert it? [y/N] "
+    return f"Found {count} plugs. The nearest will become {plug.name}. Convert it? [y/N] "
 
 
 def cmd_provision(args: argparse.Namespace) -> int:
@@ -342,9 +404,27 @@ def cmd_convert(args: argparse.Namespace) -> int:
         server = start_servers(args, payloads, ip, None)
         if not server:
             return 1
-        report_dns(ip, args)
+        seen = report_dns(ip, args)
         feed = convert.LocalFeed(server)
         say(f"Serving the {feed.describe()}")
+        if seen != ip and is_private(seen):
+            assert seen is not None
+            if switchback_server_at(seen):
+                say(f"A Switchback server is answering at {seen}. The plug will take its firmware from there,")
+                say("in that server's mode, whatever was chosen here.")
+                if args.yes or ask(f"Follow the server at {seen} instead of this computer? [Y/n] ").lower() != "n":
+                    server.close()
+                    feed = convert.HttpFeed(f"http://{seen}")
+                    say(feed.describe())
+                    if mode == "direct":
+                        say("Treating this run as portal mode: the plug will open its hotspot unless that")
+                        say("server was started with 'switchback serve --mode direct'.")
+                        mode = "portal"
+            else:
+                say(f"Nothing at {seen} looks like a Switchback server, so the plug would download nothing.")
+                say(f"Fix the redirect so wohand.com and www.wohand.com point to {ip}, then run this again.")
+                if args.yes or ask("Carry on anyway? [y/N] ").lower() != "y":
+                    return 1
 
     opts = convert.Options(
         mode=mode,
@@ -363,12 +443,13 @@ def cmd_convert(args: argparse.Namespace) -> int:
         handled: set[str] = set()
         done = 0
         while done < args.count:
-            plug = await _pick_plug(args, handled)
+            say("Looking for stock Plug Minis over Bluetooth ...")
+            plug, count = await _find_plugs(args, handled)
             if plug is None:
-                say("No more stock Plug Minis in range.")
+                say("No stock Plug Minis in range." if not handled else "No more stock Plug Minis in range.")
                 break
             handled.add(plug.ble_mac)
-            if not args.yes and (await asyncio.to_thread(ask, f"Convert {plug}? [y/N] ")).lower() != "y":
+            if not args.yes and (await asyncio.to_thread(ask, convert_question(plug, count))).lower() != "y":
                 continue
             try:
                 await convert.convert(plug, feed, opts)
