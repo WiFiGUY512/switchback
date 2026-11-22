@@ -17,6 +17,8 @@ Switchback never changes your router, your DNS server, your computer's DNS setti
 
 **Downloads.** Switchback downloads `SHA256SUMS` and the firmware files from this repository's GitHub Releases, over HTTPS, and refuses any file whose SHA-256 does not match. Verified files are cached in your user cache folder.
 
+**Files it writes.** Besides that cache, `convert` appends one line per converted plug (time, name, both MAC addresses) to `switchback-plugs.csv` in your home folder. Nothing in it leaves your computer. `--no-log` turns it off.
+
 **What it does not do.** It does not contact SwitchBot, does not collect or send telemetry, does not install a service, and does not keep running after you stop it.
 
 ## Why this is safe to publish

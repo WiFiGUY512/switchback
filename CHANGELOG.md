@@ -2,6 +2,12 @@
 
 All notable changes are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- `convert` records every converted plug by default, in `switchback-plugs.csv` in your home folder (time, name, both MACs). `--log` picks another file and `--no-log` turns it off. A log that cannot be written no longer stops a run.
+
 ## [0.4.0] - 2026-11-22
 
 A converted plug now boots the full hardware profile, so it reports power and energy right away. No second flash is needed before it is useful.

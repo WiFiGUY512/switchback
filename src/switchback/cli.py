@@ -19,6 +19,9 @@ from switchback import __version__, dns, firmware, image, label, wifiscan
 from switchback import protocol as p
 from switchback.server import FirmwareServer, Payloads
 
+# Every converted plug is recorded here unless --log or --no-log says otherwise.
+DEFAULT_LOG = Path.home() / "switchback-plugs.csv"
+
 EXPERIMENTAL_DIRECT = (
     "Direct mode is experimental. Its Wi-Fi patch checks out, but it has not yet converted a real plug. "
     "If the plug cannot join, it opens its own hotspot instead, the same as portal mode."
@@ -434,7 +437,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
         stage1_timeout=args.stage1_timeout,
         timeout=args.timeout,
         domain=args.domain,
-        log_file=Path(args.log) if args.log else None,
+        log_file=None if args.no_log else Path(args.log) if args.log else DEFAULT_LOG,
         printer=args.printer,
     )
     say("Keep each plug powered the whole time. Unplugging during the write can brick it.")
@@ -570,7 +573,11 @@ def build_parser() -> argparse.ArgumentParser:
     cv.add_argument("--stage1-timeout", type=float, default=900.0)
     cv.add_argument("--timeout", type=float, default=600.0, help="seconds allowed after stage 1")
     cv.add_argument("--domain", help="DNS suffix such as .lan, to find converted plugs across VLANs")
-    cv.add_argument("--log", help="append each converted plug to this CSV file")
+    cv.add_argument(
+        "--log",
+        help=f"CSV file that records each converted plug (default: {DEFAULT_LOG.name} in your home folder)",
+    )
+    cv.add_argument("--no-log", action="store_true", help="do not record converted plugs")
     cv.add_argument("--printer", help="ZPL label printer as host:port (off unless given)")
     cv.set_defaults(func=cmd_convert)
 

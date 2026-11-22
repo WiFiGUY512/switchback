@@ -230,7 +230,8 @@ Useful options for `convert`:
 - `--server http://<box>` uses a `switchback serve` running on another machine, so you can carry a laptop to the plugs.
 - `--fw-byte 0D` sets the update trigger's version byte. Switchback already tries 0C, 0D and 0E.
 - `--domain .lan` finds converted plugs by DNS name when mDNS cannot cross VLANs.
-- `--log plugs.csv` keeps a record of converted plugs. `--printer host:9100` prints a label.
+- Every converted plug is recorded in `switchback-plugs.csv` in your home folder: time, name and both MAC addresses. The file stays on your computer. `--log other.csv` picks another file and `--no-log` turns it off.
+- `--printer host:9100` prints a label on a ZPL printer. The layout is fixed for 1.5 x 0.5 inch labels at 203 dpi. On other label sizes it will print small or clipped.
 - `--payload my.bin` serves your own ESPHome factory image instead of the portal one.
 
 Set the Wi-Fi password with the prompt or the `SWITCHBACK_WIFI_PASS` environment variable rather than `--wifi-pass`, so it stays out of your shell history.
