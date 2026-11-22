@@ -2,7 +2,12 @@
 
 All notable changes are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## [0.5.0] - unreleased
+
+### Added
+
+- Name a plug while you convert it. `convert` asks for a name such as "Garage Freezer" (or takes `--name`), and the plug boots as `garage-freezer`, shown as "Garage Freezer". The published images carry two placeholder slots that Switchback fills in and re-checksums, the same way direct mode handles Wi-Fi. Enter keeps `sbplug-xxxxxx`. It needs firmware from this release or later, and does not work through `--server`.
+- `firmware/esphome/sbplug-adopt.yaml`: what the Adopt button imports. It is the portal firmware without the name slots.
 
 ### Changed
 

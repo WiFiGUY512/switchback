@@ -19,6 +19,7 @@ substitutions:
 
 packages:
   common: !include sbplug-common.yaml
+  name: !include sbplug-name.yaml
 
 api:
 

@@ -63,7 +63,7 @@ jobs:
             echo "wifi_ssid: ci-only"
             echo "wifi_password: ci-only-pass"
           } > secrets.yaml
-          for config in sbplug-portal.yaml sbplug-direct.yaml sbplug-implant.yaml; do
+          for config in sbplug-portal.yaml sbplug-direct.yaml sbplug-implant.yaml sbplug-adopt.yaml; do
             esphome config "$config" > /dev/null
             echo "$config OK"
           done

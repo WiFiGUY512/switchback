@@ -75,3 +75,38 @@ def test_payload_checks(factory, flasher):
         image.check_payload(bytes(qio))
     with pytest.raises(image.ImageError):
         image.check_esp32c3(b"\xe9" + b"\x00" * 30, "x")
+
+
+def test_name_patch_verifies_and_keeps_size(factory):
+    patched = image.patch_name(factory, "garage-freezer", "Garage Freezer")
+    assert len(patched) == len(factory)
+    assert image.verify_image(patched)
+    assert b"garage-freezer\x00" in patched and b"Garage Freezer\x00" in patched
+    assert not image.has_name_slots(patched)
+
+
+def test_name_and_wifi_patches_combine(factory):
+    patched = image.patch_name(image.patch_wifi(factory, "Home Net", "secret pass"), "kettle", "Kettle")
+    assert image.verify_image(patched)
+    assert b"Home Net\x00" in patched and b"kettle\x00" in patched
+
+
+def test_name_too_long_is_refused(factory):
+    with pytest.raises(image.ImageError):
+        image.patch_name(factory, "x" * 32, "ok")
+    with pytest.raises(image.ImageError):
+        image.patch_name(factory, "ok", "y" * 64)
+
+
+def test_name_needs_slots():
+    with pytest.raises(image.ImageError):
+        image.patch_name(make_factory(name_slots=False), "a", "b")
+
+
+def test_hostname_from():
+    assert image.hostname_from("Garage Freezer") == "garage-freezer"
+    assert image.hostname_from("  Kid's  Lamp #2 ") == "kid-s-lamp-2"
+    assert image.hostname_from("---") == ""
+    assert image.hostname_from("") == ""
+    assert len(image.hostname_from("a" * 50)) == 31
+    assert not image.hostname_from("a" * 30 + " b").endswith("-")

@@ -69,3 +69,22 @@ def test_bad_files_are_refused(flasher, factory):
 def test_unknown_mode(server):
     with pytest.raises(ValueError):
         server.payloads.select("other")
+
+
+def test_a_name_is_patched_into_either_payload(server):
+    payloads = server.payloads
+    assert payloads.can_name("portal") and payloads.can_name("direct")
+    payloads.select("portal", name="garage-freezer", friendly_name="Garage Freezer")
+    body = get(server, "/payload.bin")
+    assert b"garage-freezer\x00" in body and image.verify_image(body)
+    assert get(server, "/payload.md5").split()[0].decode() == hashlib.md5(body).hexdigest()
+    payloads.select("direct", "Home Net", "secret pass", name="kettle")
+    body = get(server, "/payload.bin")
+    assert b"kettle\x00" in body and b"Home Net\x00" in body and image.verify_image(body)
+    payloads.select("portal")
+    assert get(server, "/payload.bin") == payloads.portal
+
+
+def test_old_firmware_cannot_be_named(flasher):
+    payloads = Payloads(flasher, make_factory(placeholders=False, name_slots=False), None)
+    assert not payloads.can_name("portal")

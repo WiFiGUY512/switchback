@@ -6,7 +6,7 @@
 # and add your own wifi, api and ota:
 #
 #   packages:
-#     plug: github://WiFiGUY512/switchback/firmware/esphome/plug-mini.yaml@v0.4.0
+#     plug: github://WiFiGUY512/switchback/firmware/esphome/plug-mini.yaml@v0.5.0
 #
 # Pin a release tag, not main.
 #
@@ -110,9 +110,9 @@ esp32:
 
 esphome:
   on_boot:
-    priority: -100
-    then:
-      - script.execute: update_status_led
+    - priority: -100
+      then:
+        - script.execute: update_status_led
   on_shutdown:
     then:
       - lambda: |-

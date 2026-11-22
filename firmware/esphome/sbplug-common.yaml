@@ -28,7 +28,7 @@
 substitutions:
   name: sbplug
   friendly_name: "SwitchBot Plug Mini"
-  switchback_version: "0.4.0"
+  switchback_version: "0.5.0"
   relay_restore_mode: RESTORE_DEFAULT_OFF
 
 packages:
@@ -45,7 +45,7 @@ esphome:
     board_build.flash_mode: dio
 
 dashboard_import:
-  package_import_url: github://WiFiGUY512/switchback/firmware/esphome/sbplug-portal.yaml@v${switchback_version}
+  package_import_url: github://WiFiGUY512/switchback/firmware/esphome/sbplug-adopt.yaml@v${switchback_version}
   import_full_config: false
 
 # UART0 is what the serial pads expose, so boot logs show up on the recovery path.

@@ -344,6 +344,20 @@ async def _find_plugs(args: argparse.Namespace, handled: set[str]) -> tuple[Any,
     return (plugs[0] if plugs else None), len(plugs)
 
 
+def name_plug(plug: Any, payloads: Payloads, mode: str, ssid: str, password: str, typed: str) -> None:
+    """Patch the name the user typed into the payload, or reset the payload to the unnamed one."""
+    hostname = image.hostname_from(typed)
+    if not hostname:
+        payloads.select(mode, ssid, password)
+        return
+    friendly = typed.strip()
+    while len(friendly.encode("utf-8")) > 63:
+        friendly = friendly[:-1]
+    payloads.select(mode, ssid, password, name=hostname, friendly_name=friendly)
+    plug.name = hostname
+    say(f"It will be {hostname!r}, shown as {friendly!r}.")
+
+
 def convert_question(plug: Any, count: int) -> str:
     if count == 1:
         return f"Found 1 plug. It will become {plug.name}. Convert it? [y/N] "
@@ -377,6 +391,9 @@ def cmd_provision(args: argparse.Namespace) -> int:
 def cmd_convert(args: argparse.Namespace) -> int:
     from switchback import ble, convert
 
+    if args.name and args.count > 1:
+        say("--name names one plug. Leave it out with --count and you are asked for each plug.")
+        return 1
     mode = choose_mode(args)
     if mode == "direct":
         say(EXPERIMENTAL_DIRECT)
@@ -386,6 +403,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
         return 1
 
     feed: convert.Feed
+    payloads: Payloads | None = None
     if args.server:
         feed = convert.HttpFeed(args.server)
         try:
@@ -417,6 +435,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
                 say("in that server's mode, whatever was chosen here.")
                 if args.yes or ask(f"Follow the server at {seen} instead of this computer? [Y/n] ").lower() != "n":
                     server.close()
+                    payloads = None  # that server decides the payload, so no name can be patched in here
                     feed = convert.HttpFeed(f"http://{seen}")
                     say(feed.describe())
                     if mode == "direct":
@@ -454,6 +473,17 @@ def cmd_convert(args: argparse.Namespace) -> int:
             handled.add(plug.ble_mac)
             if not args.yes and (await asyncio.to_thread(ask, convert_question(plug, count))).lower() != "y":
                 continue
+            if payloads is not None and payloads.can_name(mode):
+                typed = args.name or ""
+                if not typed and not args.yes:
+                    typed = await asyncio.to_thread(ask, f"Name for this plug (Enter keeps {plug.name}): ")
+                try:
+                    name_plug(plug, payloads, mode, ssid, password, typed)
+                except (ValueError, image.ImageError) as error:
+                    say(f"Could not use that name ({error}). It stays {plug.name}.")
+                    payloads.select(mode, ssid, password)
+            elif args.name:
+                say(f"This firmware or server cannot take a name. It stays {plug.name}.")
             try:
                 await convert.convert(plug, feed, opts)
                 done += 1
@@ -563,6 +593,7 @@ def build_parser() -> argparse.ArgumentParser:
     cv.add_argument("--mode", choices=["portal", "direct"], help="portal (proven) or direct (experimental)")
     cv.add_argument("--server", help="use a 'switchback serve' on another box, e.g. http://192.0.2.10")
     cv.add_argument("--count", type=int, default=1, help="how many plugs to convert this run")
+    cv.add_argument("--name", help="name for the plug, e.g. 'Garage Freezer' (asked for if omitted; one plug only)")
     cv.add_argument("--yes", action="store_true", help="do not ask before each plug")
     cv.add_argument(
         "--fw-byte",

@@ -48,7 +48,7 @@ uv tool update-shell
 
 The second line puts uv's tool folder on your PATH. Open a new terminal afterwards. With [pipx](https://pipx.pypa.io/) it is `pipx install git+https://github.com/WiFiGUY512/switchback`, then `pipx ensurepath`.
 
-To pin a release, add `@v0.4.0` to the URL. There is no exe. The firmware files are not in the package: Switchback downloads them from this repository's [Releases](https://github.com/WiFiGUY512/switchback/releases) and checks each against the release's `SHA256SUMS` before it serves anything.
+To pin a release, add `@v0.5.0` to the URL. There is no exe. The firmware files are not in the package: Switchback downloads them from this repository's [Releases](https://github.com/WiFiGUY512/switchback/releases) and checks each against the release's `SHA256SUMS` before it serves anything.
 
 ## Quick start
 
@@ -74,7 +74,9 @@ To pin a release, add `@v0.4.0` to the URL. There is no exe. The firmware files 
    - which Wi-Fi to use for the download. It lists the networks your computer can see, so you pick a number and type the password. 5 GHz-only networks are left out, because the plug cannot join them.
    - It then looks for the plug over Bluetooth and asks `Found 1 plug. It will become sbplug-xxxxxx. Convert it?`
 
-   After you answer `y` it gives the plug the Wi-Fi, triggers the update and follows it to the end.
+   - After you answer `y` it asks for a name, for example `Garage Freezer`. The plug then boots as `garage-freezer` and shows up in Home Assistant as "Garage Freezer". Press Enter to keep `sbplug-xxxxxx`.
+
+   Then it gives the plug the Wi-Fi, triggers the update and follows it to the end.
 
 On Linux, ports 80 and 53 need root: `sudo "$(command -v switchback)" convert`. On Windows, allow the one-time firewall prompt.
 
@@ -153,6 +155,8 @@ The image Switchback writes is the full hardware profile, so a plug is useful as
 - The white LED follows the relay. The blue LED blinks fast with no Wi-Fi, stays on with Wi-Fi but no Home Assistant, and glows slowly once Home Assistant is connected.
 - The ESPHome API **without encryption**, and OTA with the published password **`switchbota`**.
 
+If you typed a name during `convert`, the plug uses it instead of `sbplug-xxxxxx`: as its hostname, its hotspot name and its name in Home Assistant. Switchback writes the name into the image just before the plug downloads it, so no second flash is needed.
+
 There is no Bluetooth proxy in the image. It would not fit in the first write. Add it later over OTA if you want one (see below).
 
 The power readings use a calibration measured on one batch of plugs (October 2026) against a reference meter. Yours should be within a few percent. To use your own figures, set `voltage_cal`, `current_cal` and `power_cal` in your config.
@@ -175,8 +179,8 @@ esphome:
   name: kitchen-kettle
 
 packages:
-  plug: github://WiFiGUY512/switchback/firmware/esphome/plug-mini.yaml@v0.4.0
-  # ble: github://WiFiGUY512/switchback/firmware/esphome/addon-ble-proxy.yaml@v0.4.0
+  plug: github://WiFiGUY512/switchback/firmware/esphome/plug-mini.yaml@v0.5.0
+  # ble: github://WiFiGUY512/switchback/firmware/esphome/addon-ble-proxy.yaml@v0.5.0
 
 api:
   encryption:

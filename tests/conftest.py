@@ -9,6 +9,8 @@ import pytest
 
 SSID_SLOT = b"SB_SSID_" + b"A" * 24
 PASS_SLOT = b"SB_PASS_" + b"B" * 55
+NAME_SLOT = b"SB_NAME_" + b"C" * 23
+FRIENDLY_SLOT = b"SB_FRND_" + b"D" * 55
 
 
 def _header(segments: int, hash_appended: int) -> bytearray:
@@ -39,7 +41,7 @@ def make_app(segments: list[bytes], hash_appended: bool = True) -> bytes:
     return bytes(body)
 
 
-def make_factory(placeholders: bool = True, hash_appended: bool = True) -> bytes:
+def make_factory(placeholders: bool = True, hash_appended: bool = True, name_slots: bool = True) -> bytes:
     img = bytearray(b"\xff" * 0x10000)
     boot = _header(0, 0)
     img[: len(boot)] = boot
@@ -50,6 +52,8 @@ def make_factory(placeholders: bool = True, hash_appended: bool = True) -> bytes
     else:
         data2 = b"no wifi here\x00"
     data3 = bytes(range(256)) * 3
+    if name_slots:
+        data3 += NAME_SLOT + b"\x00" + FRIENDLY_SLOT + b"\x00" + b"\x00" * 3
     img += make_app([data1, data2 + b"\x00" * 3, data3], hash_appended)
     return bytes(img)
 
