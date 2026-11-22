@@ -209,8 +209,9 @@ async def run_stage1(
             return True
         if triggered and not saw("stage1") and time.monotonic() - started > 75:
             raise Failed(
-                "the plug never fetched anything from the server. Check that it is on Wi-Fi, that its DNS "
-                "sends wohand.com to the server, and that nothing blocks port 80 to the server."
+                "this server saw no download from the plug. Either the plug's DNS does not send wohand.com "
+                "to this server, or port 80 to it is blocked. If wohand.com points at a different machine, the "
+                "plug may be converting from there: leave it powered and look for an sbplug-xxxxxx hotspot."
             )
         return False
 

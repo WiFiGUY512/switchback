@@ -2,7 +2,7 @@
 
 All notable changes are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [0.4.0] - unreleased
+## [0.4.0] - 2026-11-22
 
 A converted plug now boots the full hardware profile, so it reports power and energy right away. No second flash is needed before it is useful.
 
@@ -13,9 +13,14 @@ A converted plug now boots the full hardware profile, so it reports power and en
 - Device Builder and Home Assistant offer **Adopt** for a converted plug (ESPHome project `wifiguy512.switchback-plug-mini`).
 - `firmware/esphome/addon-ble-proxy.yaml`: an optional Bluetooth proxy with passive scanning, to add over OTA. It is not in any payload.
 - The relay is latched through clean restarts, so an OTA update does not blip the load.
+- `switchback convert` lists the Wi-Fi networks the computer can see, so you pick a number instead of typing the name. Networks that are 5 GHz only are left out. Typing a name still works. On macOS only the current network is offered.
+- `convert` notices when `wohand.com` already points at another machine on your network. If a Switchback server answers there, it offers to follow that server. If not, it says so before touching the plug.
 
 ### Changed
 
+- The README leads with the no-install way to run it (`uvx --from ... switchback convert`). The install steps now include the PATH step.
+- The convert question reads "Found 1 plug. It will become sbplug-xxxxxx. Convert it?" instead of leading with MAC addresses.
+- The "never fetched anything" failure now says the plug may be converting from another server and to leave it powered.
 - `sbplug-common.yaml` now includes `plug-mini.yaml` and adds the bootstrap defaults: the "Relay" switch, the button scripts (short press toggles, hold 10 seconds to factory reset), an sntp time source and the captive portal. The relay switch keeps its name and id. The blue LED shows Wi-Fi and Home Assistant state instead of ESPHome's status pattern.
 - The button's short press now accepts presses up to 2.9 seconds (was 1 second).
 
