@@ -1,0 +1,387 @@
+#==============================================================================
+# SwitchBot Plug Mini (W1901400 / W1901401, ESP32-C3): hardware package
+#==============================================================================
+# Everything the plug's hardware can do, and nothing about your network. It has
+# no wifi, ota or api keys, no names and no secrets. Use it as a remote package
+# and add your own wifi, api and ota:
+#
+#   packages:
+#     plug: github://WiFiGUY512/switchback/firmware/esphome/plug-mini.yaml@v0.4.0
+#
+# Pin a release tag, not main.
+#
+# WHAT THE PACKAGE NEEDS FROM YOUR CONFIG
+#   - esphome: name (and friendly_name if you like)
+#   - wifi: and api: (the status LED follows both)
+#   - one time source, for Outlet Daily Energy (sntp or homeassistant)
+#   - a relay switch and two scripts, on_button_press and on_button_hold.
+#     sbplug-common.yaml has the default ones: a "Relay" switch, short press
+#     toggles, hold 10 s for a factory reset. Write your own to change that.
+#
+# IDS YOU CAN USE
+#   relay_output    binary output: drives the relay and the white LED together
+#   relay_led       internal light on the white LED (follows relay_output)
+#   physical_button the button (inverted, pull-up)
+#   status_led      the blue LED, run by the update_status_led script
+#   power, current, voltage   raw readings every power_update_interval (2 s),
+#                   internal, calibrated and range-checked. Use these in
+#                   lambdas that act on load. Home Assistant gets the
+#                   rate-limited copies below.
+#   energy          lifetime energy (kWh)
+#
+# ENTITIES IN HOME ASSISTANT
+#   Outlet Power        W,   1 decimal, below 1.5 W reads 0. Sent on a 1 W
+#                       change, else once a minute.
+#   Outlet Current      A,   2 decimals. Sent on a 0.05 A change, else once a
+#                       minute.
+#   Outlet Voltage      V,   whole volts. Sent on a 1 V change, else every
+#                       5 minutes.
+#   Outlet Energy       kWh, lifetime, once a minute
+#   Outlet Daily Energy Wh,  resets at midnight, once a minute
+#   Internal Temp       C,   chip temperature, every 5 minutes (diagnostic)
+#
+# PINS
+#   GPIO2  button (inverted, pull-up)      GPIO18 BL0937 CF
+#   GPIO6  relay                           GPIO19 BL0937 CF1
+#   GPIO7  white LED (inverted)            GPIO20 BL0937 SEL (inverted)
+#   GPIO8  blue LED (inverted)
+#
+# LEDS
+#   White: on while the relay is on.
+#   Blue:  fast blink = no Wi-Fi, solid = Wi-Fi but no API client,
+#          slow glow = Home Assistant connected.
+#
+# RELAY THROUGH RESTARTS
+#   On a clean restart (OTA, restart button) on_shutdown latches the relay pin
+#   with gpio_hold_en(). The first write to relay_output after boot sets the
+#   new level and releases the latch, so an OTA does not blip the load. A
+#   power cut, crash or watchdog reset still drops it.
+#
+# BLUETOOTH
+#   Not included, to keep the image small and the radio free for Wi-Fi. Add
+#   addon-ble-proxy.yaml over OTA if you want a Bluetooth proxy.
+#==============================================================================
+
+substitutions:
+  pin_button: GPIO02
+  pin_relay: GPIO06
+  pin_led_white: GPIO07
+  pin_led_blue: GPIO08
+  pin_hlw_cf: GPIO18
+  pin_hlw_cf1: GPIO19
+  pin_hlw_sel: GPIO20
+  relay_gpio_num: "6"  # pin_relay as a bare number, for the hold lambdas
+
+  # BL0937 front end
+  voltage_divider: "1467"
+  current_resistor: "0.001"
+
+  # Per-channel calibration. Measured on a W1901400 (Oct 2026 batch) against
+  # a Kill A Watt at about 1190 W resistive. Set any of them to "1.0" for the
+  # raw chip reading, or to your own figures for another batch.
+  voltage_cal: "1.0024"
+  current_cal: "0.8655"
+  power_cal: "0.9601"
+
+  # Readings above what the plug can carry (15 A, 1800 W, mains voltage) are
+  # dropped, so a garbage first sample after boot never reaches history or
+  # the energy totals.
+  power_max: "1900"
+  current_max: "16"
+  voltage_max: "150"
+
+  # Below this the plug reads 0 W (the BL0937 shows a little noise at no load)
+  power_floor: "1.5"
+
+  power_update_interval: "2s"
+  energy_publish_interval: "60s"
+
+#------------------------------------------------------------------------------
+# Board
+#------------------------------------------------------------------------------
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: ESP32C3
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "10"
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - script.execute: update_status_led
+  on_shutdown:
+    then:
+      - lambda: |-
+          gpio_hold_en((gpio_num_t) ${relay_gpio_num});
+          ESP_LOGW("relay_hold", "Relay GPIO%d latched for restart", ${relay_gpio_num});
+
+#------------------------------------------------------------------------------
+# The status LED follows Wi-Fi and API state
+#------------------------------------------------------------------------------
+api:
+  on_client_connected:
+    - script.execute: update_status_led
+  on_client_disconnected:
+    - script.execute: update_status_led
+
+wifi:
+  on_connect:
+    - script.execute: update_status_led
+  on_disconnect:
+    - script.execute: update_status_led
+
+# The 40 ms glow effect floods the log at DEBUG
+logger:
+  logs:
+    light: INFO
+
+#------------------------------------------------------------------------------
+# Outputs
+#------------------------------------------------------------------------------
+output:
+  # Drive the relay through this. It sets the relay pin, releases a restart
+  # latch left by on_shutdown (no-op otherwise), and mirrors the white LED.
+  - platform: template
+    id: relay_output
+    type: binary
+    write_action:
+      - lambda: |-
+          gpio_num_t p = (gpio_num_t) ${relay_gpio_num};
+          gpio_set_level(p, state);
+          gpio_hold_dis(p);
+          id(relay_gpio).set_state(state);
+          id(relay_led_output).set_state(state);
+
+  - platform: gpio
+    id: relay_gpio
+    pin: ${pin_relay}
+
+  - platform: gpio
+    id: relay_led_output
+    pin:
+      number: ${pin_led_white}
+      inverted: true
+
+  - platform: ledc
+    id: status_led_output
+    pin:
+      number: ${pin_led_blue}
+      inverted: true
+    frequency: 1000Hz
+
+light:
+  - platform: binary
+    id: relay_led
+    output: relay_led_output
+    internal: true
+
+  - platform: monochromatic
+    id: status_led
+    output: status_led_output
+    internal: true
+    default_transition_length: 0ms
+    effects:
+      - strobe:
+          name: "Fast Blink"
+          colors:
+            - state: true
+              brightness: 100%
+              duration: 500ms
+            - state: false
+              duration: 500ms
+      - lambda:
+          name: "Slow Glow"
+          update_interval: 40ms
+          lambda: |-
+            static float phase = 0;
+            phase += 0.05;  // about 2 s per cycle
+            if (phase > 3.14159) phase = -3.14159;
+            float brightness = (sin(phase) + 1.0) / 2.0;
+            auto call = id(status_led).turn_on();
+            call.set_brightness(brightness);
+            call.set_transition_length(0);
+            call.perform();
+
+script:
+  - id: update_status_led
+    then:
+      - if:
+          condition:
+            not:
+              wifi.connected:
+          then:
+            - light.turn_on:
+                id: status_led
+                brightness: 100%
+                effect: "Fast Blink"
+          else:
+            - if:
+                condition:
+                  api.connected:
+                then:
+                  - light.turn_on:
+                      id: status_led
+                      brightness: 100%
+                      effect: "Slow Glow"
+                else:
+                  - light.turn_on:
+                      id: status_led
+                      brightness: 100%
+                      effect: none
+
+# Catch any state change the callbacks missed
+interval:
+  - interval: 30s
+    then:
+      - script.execute: update_status_led
+
+#------------------------------------------------------------------------------
+# Button: short press runs on_button_press, holding it runs on_button_hold
+# at the 3 s mark (your config supplies both scripts)
+#------------------------------------------------------------------------------
+binary_sensor:
+  - platform: gpio
+    id: physical_button
+    internal: true
+    pin:
+      number: ${pin_button}
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 10ms
+    on_multi_click:
+      - timing:
+          - ON for at most 2.9s
+          - OFF for at least 0.1s
+        then:
+          - script.execute: on_button_press
+      - timing:
+          - ON for at least 3s
+        then:
+          - script.execute: on_button_hold
+
+#------------------------------------------------------------------------------
+# Power monitoring (BL0937)
+#------------------------------------------------------------------------------
+sensor:
+  # Raw readings: internal, every power_update_interval. Lambdas read these.
+  - platform: hlw8012
+    id: hlw_sensor
+    model: BL0937
+    sel_pin:
+      number: ${pin_hlw_sel}
+      inverted: true
+    cf_pin: ${pin_hlw_cf}
+    cf1_pin: ${pin_hlw_cf1}
+    voltage_divider: ${voltage_divider}
+    current_resistor: ${current_resistor}
+    update_interval: ${power_update_interval}
+    change_mode_every: 4
+    power:
+      id: power
+      internal: true
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      accuracy_decimals: 1
+      filters:
+        - multiply: ${power_cal}
+        - lambda: 'if (x > ${power_max} || x < 0) return {}; return x;'
+    current:
+      id: current
+      internal: true
+      unit_of_measurement: A
+      device_class: current
+      state_class: measurement
+      accuracy_decimals: 2
+      filters:
+        - multiply: ${current_cal}
+        - lambda: 'if (x > ${current_max} || x < 0) return {}; return x;'
+    voltage:
+      id: voltage
+      internal: true
+      unit_of_measurement: V
+      device_class: voltage
+      state_class: measurement
+      accuracy_decimals: 1
+      filters:
+        - multiply: ${voltage_cal}
+        - lambda: 'if (x > ${voltage_max} || x < 0) return {}; return x;'
+    energy:
+      name: "Outlet Energy"
+      id: energy
+      unit_of_measurement: kWh
+      device_class: energy
+      state_class: total_increasing
+      accuracy_decimals: 3
+      filters:
+        - multiply: 0.001
+        - multiply: ${power_cal}
+        - heartbeat: ${energy_publish_interval}
+
+  # What Home Assistant sees: the same readings, sent only when they change
+  # by a real amount, plus a heartbeat. The names match the older firmware,
+  # so existing entities and their history carry over.
+  - platform: copy
+    source_id: power
+    id: power_published
+    name: "Outlet Power"
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - lambda: 'return x < ${power_floor} ? 0.0f : x;'
+      - round: 1
+      - or:
+          - delta: 1.0
+          - heartbeat: 60s
+
+  - platform: copy
+    source_id: current
+    id: current_published
+    name: "Outlet Current"
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 2
+    filters:
+      - round: 2
+      - or:
+          - delta: 0.05
+          - heartbeat: 60s
+
+  - platform: copy
+    source_id: voltage
+    id: voltage_published
+    name: "Outlet Voltage"
+    unit_of_measurement: V
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - round: 0
+      - or:
+          - delta: 1.0
+          - heartbeat: 300s
+
+  # Integrates the raw 2 s power, not the rate-limited copy
+  - platform: total_daily_energy
+    name: "Outlet Daily Energy"
+    id: daily_energy
+    power_id: power
+    accuracy_decimals: 2
+    filters:
+      - heartbeat: ${energy_publish_interval}
+
+  - platform: internal_temperature
+    name: "Internal Temp"
+    update_interval: 300s
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    filters:
+      - round: 0

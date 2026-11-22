@@ -128,17 +128,40 @@ A plain "check for update" in the app does not work: that path uses SwitchBot's 
 
 ## After conversion
 
-The image Switchback writes is a small bootstrap. It has:
+The image Switchback writes is the full hardware profile, so a plug is useful as soon as it joins your Wi-Fi. It shows up as `sbplug-xxxxxx` with:
 
-- the relay, the button (short press toggles, hold 10 seconds to factory reset) and the blue status LED,
-- the ESPHome API **without encryption**,
-- OTA with the published password **`switchbota`**.
+- **Relay**, a switch. It stays off after a power cut. A clean restart or an OTA update does not blip the load.
+- **Outlet Power**, **Outlet Current** and **Outlet Voltage**. The plug measures every 2 seconds but only sends a reading when it changes by a real amount (1 W, 0.05 A, 1 V), plus a heartbeat, so your history stays small. Below 1.5 W it reads 0.
+- **Outlet Energy** (lifetime, kWh) and **Outlet Daily Energy** (Wh, resets at midnight), once a minute. Both work with the Home Assistant Energy dashboard.
+- **Internal Temp**, the chip temperature, as a diagnostic.
+- The button: a short press toggles the relay. Hold it 10 seconds to factory reset.
+- The white LED follows the relay. The blue LED blinks fast with no Wi-Fi, stays on with Wi-Fi but no Home Assistant, and glows slowly once Home Assistant is connected.
+- The ESPHome API **without encryption**, and OTA with the published password **`switchbota`**.
 
-Adopt the plug in ESPHome or Home Assistant and flash your own config over OTA right away, with your own API key and OTA password. You can build on the same hardware definition as a remote package:
+There is no Bluetooth proxy in the image. It would not fit in the first write. Add it later over OTA if you want one (see below).
+
+The power readings use a calibration measured on one batch of plugs (October 2026) against a reference meter. Yours should be within a few percent. To use your own figures, set `voltage_cal`, `current_cal` and `power_cal` in your config.
+
+### Adopt it
+
+Device Builder and Home Assistant offer an **Adopt** button for a converted plug. Adopting writes a short config that pulls in this repository's firmware, pinned to the release, and adds your own Wi-Fi and a fresh API encryption key. Install it once over OTA and you are done. Change the OTA password at the same time:
 
 ```yaml
+substitutions:
+  ota_password: !secret ota_password
+```
+
+### Or build your own config
+
+`plug-mini.yaml` is the hardware on its own: relay output, button, LEDs, power monitoring. It has no Wi-Fi, API or OTA section, no names and no secrets, so you can build anything on it. Your config supplies the relay switch, the two button scripts (`on_button_press`, `on_button_hold`) and a time source. `sbplug-common.yaml` shows the defaults.
+
+```yaml
+esphome:
+  name: kitchen-kettle
+
 packages:
-  switchback: github://WiFiGUY512/switchback/firmware/esphome/sbplug-common.yaml@v0.3.0
+  plug: github://WiFiGUY512/switchback/firmware/esphome/plug-mini.yaml@v0.4.0
+  # ble: github://WiFiGUY512/switchback/firmware/esphome/addon-ble-proxy.yaml@v0.4.0
 
 api:
   encryption:
@@ -151,7 +174,26 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+
+time:
+  - platform: homeassistant
+
+switch:
+  - platform: output
+    name: "Relay"
+    id: relay
+    output: relay_output
+    restore_mode: RESTORE_DEFAULT_ON
+
+script:
+  - id: on_button_press
+    then:
+      - switch.toggle: relay
+  - id: on_button_hold
+    then: []
 ```
+
+Lambdas that act on load (for example, "turn off when the kettle is done") should read the raw 2 second values, `id(power).state`, `id(current).state` and `id(voltage).state`. Home Assistant gets the rate-limited copies.
 
 To flash a config while the plug is still in hotspot mode, join its `sbplug-xxxxxx` network and run `esphome upload your.yaml --device 192.168.4.1` (OTA password `switchbota`).
 

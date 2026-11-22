@@ -1,43 +1,52 @@
 #==============================================================================
-# SwitchBot Plug Mini (W1901400 / W1901401), ESP32-C3: the hardware
+# Switchback bootstrap: shared by every payload (portal, direct, implant)
 #==============================================================================
-# Shared by every Switchback payload. It has no api, ota or wifi section, so
-# you can also pull it into your own config as a remote package:
+# The full hardware profile (plug-mini.yaml: relay, button, LEDs, power,
+# voltage, current, energy) plus the defaults a fresh plug needs:
 #
-#   packages:
-#     switchback: github://WiFiGUY512/switchback/firmware/esphome/sbplug-common.yaml@v0.3.0
+#   - a "Relay" switch, off after a power cut (relay_restore_mode)
+#   - button: short press toggles the relay. Hold 10 s to factory reset,
+#     which wipes Wi-Fi saved through the hotspot, so a portal plug offers it
+#     again. The blue LED keeps its status pattern while you hold.
+#   - a time source for Outlet Daily Energy (sntp)
+#   - captive portal, and the project info Device Builder and Home Assistant
+#     use to offer "Adopt"
 #
-# then add your own api, ota and wifi. Pin a release tag, not main.
+# This file has no api, ota or wifi section. The payload files add those.
 #
 # SIZE LIMIT (for payloads the flasher writes):
 #   The flasher writes from 0x0 and can only write 0x171000 (1,511,424) bytes,
-#   so firmware.factory.bin has to stay under that. That is why there are no
-#   BLE components here. Add those later in your own config over OTA.
+#   so firmware.factory.bin has to stay under that. build_payload.py refuses
+#   anything larger. Bluetooth is not in the bootstrap for this reason; add
+#   addon-ble-proxy.yaml later over OTA.
 #
 # PARTITIONS:
 #   A converted plug keeps the partition table from the image the flasher
 #   wrote (ESPHome default for 4MB: two app slots). OTA never changes it.
-#
-# BUTTON: short press toggles the relay. Hold 10 s to factory reset, which
-#   wipes Wi-Fi saved through the hotspot, so a portal plug offers it again.
-# BLUE LED: blinks while the plug is not on Wi-Fi.
 #==============================================================================
 
 substitutions:
   name: sbplug
+  friendly_name: "SwitchBot Plug Mini"
+  switchback_version: "0.4.0"
+  relay_restore_mode: RESTORE_DEFAULT_OFF
+
+packages:
+  hardware: !include plug-mini.yaml
 
 esphome:
   name: ${name}
+  friendly_name: ${friendly_name}
   name_add_mac_suffix: true
+  project:
+    name: wifiguy512.switchback-plug-mini
+    version: ${switchback_version}
   platformio_options:
     board_build.flash_mode: dio
 
-esp32:
-  board: esp32-c3-devkitm-1
-  variant: ESP32C3
-  flash_size: 4MB
-  framework:
-    type: esp-idf
+dashboard_import:
+  package_import_url: github://WiFiGUY512/switchback/firmware/esphome/sbplug-portal.yaml@v${switchback_version}
+  import_full_config: false
 
 # UART0 is what the serial pads expose, so boot logs show up on the recovery path.
 logger:
@@ -45,40 +54,34 @@ logger:
 
 captive_portal:
 
-status_led:
-  pin:
-    number: GPIO8
-    inverted: true
+time:
+  - platform: sntp
+    id: sntp_time
 
 switch:
-  - platform: gpio
+  - platform: output
     id: relay
     name: "Relay"
-    pin: GPIO6
-    restore_mode: RESTORE_DEFAULT_OFF
+    output: relay_output
+    restore_mode: ${relay_restore_mode}
 
 button:
   - platform: factory_reset
     id: factory_reset_button
     internal: true
 
-binary_sensor:
-  - platform: gpio
-    id: plug_button
-    internal: true
-    pin:
-      number: GPIO2
-      mode: INPUT_PULLUP
-      inverted: true
-    filters:
-      - delayed_on: 10ms
-    on_multi_click:
-      - timing:
-          - ON for at most 1s
-          - OFF for at least 0.3s
-        then:
-          - switch.toggle: relay
-      - timing:
-          - ON for at least 10s
-        then:
-          - button.press: factory_reset_button
+script:
+  - id: on_button_press
+    then:
+      - switch.toggle: relay
+
+  # Runs at the 3 s mark. Still held 7 s later (10 s in all) = factory reset.
+  - id: on_button_hold
+    mode: single
+    then:
+      - delay: 7s
+      - if:
+          condition:
+            binary_sensor.is_on: physical_button
+          then:
+            - button.press: factory_reset_button
