@@ -16,6 +16,9 @@ import struct
 
 SSID_PREFIX = b"SB_SSID_"
 PASS_PREFIX = b"SB_PASS_"
+# Prefix plus the first fill characters, so only the real slot matches.
+NAME_PREFIX = b"SB_NAME_CCCC"
+FRIENDLY_PREFIX = b"SB_FRND_DDDD"
 ESP_IMAGE_MAGIC = 0xE9
 ESP_CHECKSUM_MAGIC = 0xEF
 ESP32C3_CHIP_ID = 0x0005
@@ -87,13 +90,17 @@ def has_placeholders(image: bytes) -> bool:
     return SSID_PREFIX in image and PASS_PREFIX in image
 
 
-def patch_wifi(image: bytes, ssid: str, password: str, app_offset: int = APP_OFFSET) -> bytes:
-    """Return a copy of image with the placeholder Wi-Fi replaced and the checksum and hash fixed."""
+def has_name_slots(image: bytes) -> bool:
+    return NAME_PREFIX in image and FRIENDLY_PREFIX in image
+
+
+def _fill_slots(image: bytes, slots: tuple[tuple[bytes, str, str], ...], app_offset: int, hint: str) -> bytes:
+    """Overwrite each placeholder slot with its value, then fix the checksum and hash."""
     img = bytearray(image)
-    for prefix, label, value in ((SSID_PREFIX, "Wi-Fi name", ssid), (PASS_PREFIX, "Wi-Fi password", password)):
+    for prefix, label, value in slots:
         i = img.find(prefix)
         if i < 0:
-            raise ImageError(f"{label} placeholder not found. Is this the direct build?")
+            raise ImageError(f"{label} placeholder not found. {hint}")
         end = img.find(b"\x00", i)  # the slot runs to the string's null terminator
         if end < 0 or not (len(prefix) <= end - i <= 64):
             raise ImageError(f"{label} placeholder slot looks wrong")
@@ -108,6 +115,29 @@ def patch_wifi(image: bytes, ssid: str, password: str, app_offset: int = APP_OFF
     if hash_pos is not None and sha is not None:
         img[hash_pos : hash_pos + 32] = sha
     return bytes(img)
+
+
+def patch_wifi(image: bytes, ssid: str, password: str, app_offset: int = APP_OFFSET) -> bytes:
+    """Return a copy of image with the placeholder Wi-Fi replaced and the checksum and hash fixed."""
+    slots = ((SSID_PREFIX, "Wi-Fi name", ssid), (PASS_PREFIX, "Wi-Fi password", password))
+    return _fill_slots(image, slots, app_offset, "Is this the direct build?")
+
+
+def patch_name(image: bytes, name: str, friendly_name: str, app_offset: int = APP_OFFSET) -> bytes:
+    """Return a copy of image that boots with this hostname and friendly name."""
+    slots = ((NAME_PREFIX, "name", name), (FRIENDLY_PREFIX, "friendly name", friendly_name))
+    return _fill_slots(image, slots, app_offset, "This firmware is too old to take a name.")
+
+
+def hostname_from(text: str) -> str:
+    """A valid ESPHome name from what the user typed: 'Garage Freezer' -> 'garage-freezer'."""
+    out = []
+    for ch in text.strip().lower():
+        if ch.isascii() and ch.isalnum():
+            out.append(ch)
+        elif out and out[-1] != "-":
+            out.append("-")
+    return "".join(out).strip("-")[:31].strip("-")
 
 
 def check_esp32c3(image: bytes, name: str) -> None:

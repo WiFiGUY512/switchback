@@ -1,0 +1,26 @@
+#==============================================================================
+# What "Adopt" in Device Builder or Home Assistant imports
+#==============================================================================
+# The same firmware as the portal payload, without the convert-time name
+# slots (sbplug-name.yaml). Adopting gives the plug its name the normal way,
+# and adds your Wi-Fi and a fresh API encryption key. Change the OTA password
+# at the same time:
+#
+#   substitutions:
+#     ota_password: !secret ota_password
+#==============================================================================
+
+substitutions:
+  ota_password: switchbota
+
+packages:
+  common: !include sbplug-common.yaml
+
+api:
+
+ota:
+  platform: esphome
+  password: ${ota_password}
+
+wifi:
+  ap:

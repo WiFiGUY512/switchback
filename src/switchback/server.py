@@ -108,23 +108,39 @@ class Payloads:
     def from_files(cls, app: Path, portal: Path, direct: Path | None) -> Payloads:
         return cls(app.read_bytes(), portal.read_bytes(), direct.read_bytes() if direct else None)
 
-    def select(self, mode: str, ssid: str | None = None, password: str | None = None) -> None:
-        """Serve the portal build, or the direct build with this Wi-Fi patched in."""
+    def select(
+        self,
+        mode: str,
+        ssid: str | None = None,
+        password: str | None = None,
+        name: str | None = None,
+        friendly_name: str | None = None,
+    ) -> None:
+        """Serve the portal build, or the direct build with this Wi-Fi patched in.
+
+        With a name, that name is patched in too, so the plug boots with it.
+        """
         if mode == "direct":
             if self.direct is None:
                 raise image.ImageError("direct mode needs the direct payload")
             if not ssid:
                 raise ValueError("direct mode needs a Wi-Fi name")
-            patched = image.patch_wifi(self.direct, ssid, password or "")
-            if not image.verify_image(patched):
-                raise image.ImageError("the patched image failed its own checksum")
-            self.payload = patched
+            payload = image.patch_wifi(self.direct, ssid, password or "")
         elif mode == "portal":
-            self.payload = self.portal
+            payload = self.portal
         else:
             raise ValueError(f"unknown mode {mode!r}")
+        if name:
+            payload = image.patch_name(payload, name, friendly_name or name)
+        if payload is not self.portal and not image.verify_image(payload):
+            raise image.ImageError("the patched image failed its own checksum")
+        self.payload = payload
         self.mode = mode
         self.md5 = hashlib.md5(self.payload).hexdigest()
+
+    def can_name(self, mode: str) -> bool:
+        base = self.direct if mode == "direct" else self.portal
+        return base is not None and image.has_name_slots(base)
 
 
 def _make_handler(payloads: Payloads, events: EventLog, arp: Callable[[str], str | None]) -> type:

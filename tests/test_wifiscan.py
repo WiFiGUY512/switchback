@@ -118,3 +118,12 @@ def test_convert_question():
 def test_is_private():
     assert is_private("192.168.20.84") and is_private("10.1.10.96")
     assert not is_private("3.171.153.12") and not is_private("127.0.0.1") and not is_private(None)
+
+
+def test_log_is_on_by_default():
+    from switchback import cli
+
+    parser = cli.build_parser()
+    assert cli.DEFAULT_LOG.name == "switchback-plugs.csv"
+    assert parser.parse_args(["convert"]).no_log is False
+    assert parser.parse_args(["convert", "--no-log"]).no_log is True

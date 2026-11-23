@@ -1,0 +1,48 @@
+#==============================================================================
+# Switchback payloads only: a name you choose at conversion time
+#==============================================================================
+# The published images are built once for everyone, so the name cannot be
+# compiled in. Instead the image carries two fixed-size placeholder slots.
+# `switchback convert` overwrites them with the name you type, then fixes the
+# image checksum and SHA-256, the same way direct mode handles Wi-Fi.
+#
+#   name slot:          SB_NAME_ + 23 'C'   (31 bytes, the hostname)
+#   friendly name slot: SB_FRND_ + 55 'D'   (63 bytes, shown in Home Assistant)
+#
+# At boot, before Wi-Fi starts, the plug looks at the slots. Still
+# placeholders: nothing happens and the plug is sbplug-xxxxxx. Patched: the
+# plug uses that name for its hostname, hotspot and Home Assistant.
+#
+# This reaches into ESPHome's Application object, so it is tied to the ESPHome
+# version the release is built with. It is not part of sbplug-common.yaml, and
+# a config you write or adopt does not need it: there you set the name the
+# normal way.
+#==============================================================================
+
+esphome:
+  on_boot:
+    - priority: 1000
+      then:
+        - lambda: |-
+            static volatile char name_slot[] = "SB_NAME_CCCCCCCCCCCCCCCCCCCCCCC";
+            static volatile char friendly_slot[] = "SB_FRND_DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD";
+            static char name[sizeof(name_slot)];
+            static char friendly[sizeof(friendly_slot)];
+            auto copy = [](volatile char *slot, char *out, size_t size) -> size_t {
+              size_t n = 0;
+              while (n + 1 < size && slot[n] != 0) {
+                out[n] = slot[n];
+                n++;
+              }
+              out[n] = 0;
+              return n;
+            };
+            size_t name_len = copy(name_slot, name, sizeof(name));
+            size_t friendly_len = copy(friendly_slot, friendly, sizeof(friendly));
+            // Still the placeholder? A real hostname is lower case, so it never starts with "SB_".
+            // Compared one character at a time so the marker text exists only inside the slots.
+            if (name_len == 0 || (name[0] == 'S' && name[1] == 'B' && name[2] == '_')) return;
+            const_cast<StringRef &>(App.get_name()) = StringRef(name, name_len);
+            if (friendly_len > 0) {
+              const_cast<StringRef &>(App.get_friendly_name()) = StringRef(friendly, friendly_len);
+            }

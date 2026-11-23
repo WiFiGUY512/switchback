@@ -220,8 +220,11 @@ async def convert(plug: Plug, feed: Feed, opts: Options) -> str:
     log("Leave it powered for at least another minute. A power cut right after an update can roll it back.")
 
     if opts.log_file:
-        write_log(opts.log_file, plug, address)
-        log(f"logged to {opts.log_file}")
+        try:
+            write_log(opts.log_file, plug, address)
+            log(f"recorded in {opts.log_file}")
+        except OSError as error:
+            log(f"could not record the plug in {opts.log_file}: {error}")
     if opts.printer:
         try:
             label.send(opts.printer, label.render(plug.ble_mac, plug.wifi_mac))
