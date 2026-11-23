@@ -355,6 +355,7 @@ def name_plug(plug: Any, payloads: Payloads, mode: str, ssid: str, password: str
         friendly = friendly[:-1]
     payloads.select(mode, ssid, password, name=hostname, friendly_name=friendly)
     plug.name = hostname
+    plug.friendly_name = friendly
     say(f"It will be {hostname!r}, shown as {friendly!r}.")
 
 
