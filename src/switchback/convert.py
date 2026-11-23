@@ -187,9 +187,16 @@ def write_log(path: Path, plug: Plug, address: str) -> None:
     with path.open("a", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         if new:
-            writer.writerow(["time", "name", "wifi_mac", "ble_mac", "address"])
+            writer.writerow(["time", "name", "friendly_name", "wifi_mac", "ble_mac", "address"])
         writer.writerow(
-            [datetime.datetime.now().isoformat(timespec="seconds"), plug.name, plug.wifi_mac, plug.ble_mac, address]
+            [
+                datetime.datetime.now().isoformat(timespec="seconds"),
+                plug.name,
+                getattr(plug, "friendly_name", "") or "",
+                plug.wifi_mac,
+                plug.ble_mac,
+                address,
+            ]
         )
 
 

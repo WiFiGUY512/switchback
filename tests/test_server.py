@@ -88,3 +88,25 @@ def test_a_name_is_patched_into_either_payload(server):
 def test_old_firmware_cannot_be_named(flasher):
     payloads = Payloads(flasher, make_factory(placeholders=False, name_slots=False), None)
     assert not payloads.can_name("portal")
+
+
+def test_log_records_the_name_with_both_macs(tmp_path, flasher, factory):
+    import csv
+
+    from switchback import cli, convert
+
+    class FakePlug:
+        name = "sbplug-a1b2c3"
+        wifi_mac = "aa:bb:cc:a1:b2:c3"
+        ble_mac = "aa:bb:cc:a1:b2:c5"
+
+    plug = FakePlug()
+    payloads = Payloads(flasher, factory, factory)
+    cli.name_plug(plug, payloads, "portal", "", "", "Garage Freezer")
+    log = tmp_path / "plugs.csv"
+    convert.write_log(log, plug, "hotspot")
+    convert.write_log(log, FakePlug(), "hotspot")
+    rows = list(csv.DictReader(log.open(encoding="utf-8")))
+    assert rows[0]["name"] == "garage-freezer" and rows[0]["friendly_name"] == "Garage Freezer"
+    assert rows[0]["wifi_mac"] == "aa:bb:cc:a1:b2:c3" and rows[0]["ble_mac"] == "aa:bb:cc:a1:b2:c5"
+    assert rows[1]["name"] == "sbplug-a1b2c3" and rows[1]["friendly_name"] == ""

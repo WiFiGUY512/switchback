@@ -2,6 +2,12 @@
 
 All notable changes are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- The conversion log has a `friendly_name` column, so a named plug is recorded with the name you typed, its hostname and both MAC addresses.
+
 ## [0.5.0] - 2026-11-22
 
 ### Added
